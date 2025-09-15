@@ -143,6 +143,72 @@ class ThemeManager {
     }
 }
 
+// MARK: - Autostart Manager
+class AutostartManager {
+    static let shared = AutostartManager()
+
+    private let launchAgentsPath = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/LaunchAgents")
+    private let plistFileName = "com.themeswitcher.app.plist"
+
+    private init() {}
+
+    var isEnabled: Bool {
+        return FileManager.default.fileExists(atPath: plistFilePath.path)
+    }
+
+    private var plistFilePath: URL {
+        return launchAgentsPath.appendingPathComponent(plistFileName)
+    }
+
+    private var applicationPath: String {
+        return Bundle.main.executablePath ?? ""
+    }
+
+    func enable() -> Bool {
+        do {
+            // Создаем директорию если не существует
+            try FileManager.default.createDirectory(at: launchAgentsPath, withIntermediateDirectories: true)
+
+            // Создаем plist для автозапуска
+            let plistContent = createPlistContent()
+            let plistData = try PropertyListSerialization.data(fromPropertyList: plistContent, format: .xml, options: 0)
+
+            try plistData.write(to: plistFilePath)
+
+            print("Autostart enabled: \(plistFilePath.path)")
+            return true
+        } catch {
+            print("Failed to enable autostart: \(error)")
+            return false
+        }
+    }
+
+    func disable() -> Bool {
+        do {
+            if FileManager.default.fileExists(atPath: plistFilePath.path) {
+                try FileManager.default.removeItem(at: plistFilePath)
+                print("Autostart disabled")
+                return true
+            }
+            return true
+        } catch {
+            print("Failed to disable autostart: \(error)")
+            return false
+        }
+    }
+
+    private func createPlistContent() -> [String: Any] {
+        return [
+            "Label": "com.themeswitcher.app",
+            "ProgramArguments": [applicationPath],
+            "RunAtLoad": true,
+            "KeepAlive": false,
+            "ProcessType": "Interactive"
+        ]
+    }
+}
+
 // MARK: - Settings Window Controller
 class SettingsWindowController: NSWindowController {
 
@@ -192,12 +258,22 @@ class SettingsWindowController: NSWindowController {
         contentView.addSubview(themeLabel)
 
         // Кнопка переключения темы
-        let toggleButton = NSButton(frame: NSRect(x: 150, y: 90, width: 100, height: 30))
+        let toggleButton = NSButton(frame: NSRect(x: 150, y: 110, width: 100, height: 30))
         toggleButton.title = "Переключить"
         toggleButton.bezelStyle = .rounded
         toggleButton.target = self
         toggleButton.action = #selector(toggleThemeFromSettings)
         contentView.addSubview(toggleButton)
+
+        // Checkbox для автозапуска
+        let autostartCheckbox = NSButton(frame: NSRect(x: 50, y: 80, width: 300, height: 18))
+        autostartCheckbox.setButtonType(.switch)
+        autostartCheckbox.title = "Запускать автоматически при входе в систему"
+        autostartCheckbox.state = AutostartManager.shared.isEnabled ? .on : .off
+        autostartCheckbox.target = self
+        autostartCheckbox.action = #selector(toggleAutostart(_:))
+        autostartCheckbox.tag = 200 // Для поиска при обновлении
+        contentView.addSubview(autostartCheckbox)
 
         // Информация о версии
         let versionLabel = NSTextField(labelWithString: "ThemeSwitcher v1.0")
@@ -227,6 +303,23 @@ class SettingsWindowController: NSWindowController {
         if let label = contentView.viewWithTag(100) as? NSTextField {
             let currentTheme = ThemeManager.shared.getCurrentTheme()
             label.stringValue = "Текущая тема: \(currentTheme == "dark" ? "🌙 Тёмная" : "☀️ Светлая")"
+        }
+    }
+
+    @objc private func toggleAutostart(_ sender: NSButton) {
+        let success: Bool
+        if sender.state == .on {
+            success = AutostartManager.shared.enable()
+            if !success {
+                sender.state = .off
+                showError("Не удалось включить автозапуск")
+            }
+        } else {
+            success = AutostartManager.shared.disable()
+            if !success {
+                sender.state = .on
+                showError("Не удалось отключить автозапуск")
+            }
         }
     }
 
@@ -299,6 +392,12 @@ class StatusBarController {
         let toggleItem = NSMenuItem(title: "🎨 Переключить тему", action: #selector(toggleThemeAction), keyEquivalent: "")
         toggleItem.target = self
         menu.addItem(toggleItem)
+
+        // Автозапуск
+        let autostartItem = NSMenuItem(title: "🚀 Автозапуск", action: #selector(toggleAutostartAction), keyEquivalent: "")
+        autostartItem.target = self
+        autostartItem.state = AutostartManager.shared.isEnabled ? .on : .off
+        menu.addItem(autostartItem)
 
         // Настройки
         let settingsItem = NSMenuItem(title: "⚙️ Настройки...", action: #selector(showSettingsAction), keyEquivalent: "")
@@ -395,6 +494,25 @@ class StatusBarController {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    @objc private func toggleAutostartAction() {
+        let success: Bool
+        if AutostartManager.shared.isEnabled {
+            success = AutostartManager.shared.disable()
+            if success {
+                showNotification("Автозапуск отключен")
+            } else {
+                showError("Ошибка автозапуска", "Не удалось отключить автозапуск")
+            }
+        } else {
+            success = AutostartManager.shared.enable()
+            if success {
+                showNotification("Автозапуск включен")
+            } else {
+                showError("Ошибка автозапуска", "Не удалось включить автозапуск")
+            }
+        }
+    }
+
     @objc private func showAboutAction() {
         let alert = NSAlert()
         alert.messageText = "ThemeSwitcher"
@@ -402,6 +520,18 @@ class StatusBarController {
         alert.alertStyle = .informational
         alert.addButton(withTitle: "OK")
         alert.runModal()
+    }
+
+    private func showNotification(_ message: String) {
+        // Простое уведомление через tooltip
+        if let button = statusItem.button {
+            let originalTooltip = button.toolTip
+            button.toolTip = message
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                button.toolTip = originalTooltip
+            }
+        }
     }
 
     private func showError(_ title: String, _ message: String) {
