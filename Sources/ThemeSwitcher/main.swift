@@ -197,19 +197,13 @@ class StatusBarController {
         if let button = statusItem.button {
             button.image = themeManager.createIcon(for: themeManager.getCurrentTheme())
             button.image?.size = NSSize(width: 18, height: 18)
-            button.action = #selector(leftClickAction)
+            button.action = #selector(statusBarButtonClicked(_:))
             button.target = self
             button.toolTip = "ThemeSwitcher - Левый клик: переключить тему, Правый клик: настройки"
 
-            // Настройка отправки действий для разных типов кликов
+            // Настройка отправки действий для всех типов кликов
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
-
-        // Добавляем обработку правого клика
-        let rightClickRecognizer = NSClickGestureRecognizer(target: self, action: #selector(rightClickAction(_:)))
-        rightClickRecognizer.buttonMask = 0x2 // Правый клик
-        rightClickRecognizer.numberOfClicksRequired = 1
-        statusItem.button?.addGestureRecognizer(rightClickRecognizer)
 
         // Наблюдатель за изменением темы
         DistributedNotificationCenter.default().addObserver(
@@ -220,6 +214,7 @@ class StatusBarController {
         )
 
         updateIcon()
+        print("ThemeSwitcher запущен! Иконка в меню баре.")
     }
 
     private func createRightClickMenu() -> NSMenu {
@@ -263,16 +258,24 @@ class StatusBarController {
         return menu
     }
 
-    @objc private func leftClickAction() {
-        // Левый клик - переключаем тему
-        let event = NSApp.currentEvent
-        if event?.type == .leftMouseUp {
+    @objc private func statusBarButtonClicked(_ sender: NSStatusBarButton) {
+        guard let event = NSApp.currentEvent else { return }
+
+        switch event.type {
+        case .leftMouseUp:
             print("Левый клик - переключение темы")
             themeManager.toggleTheme()
             // Обновляем иконку после переключения
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 self.updateIcon()
             }
+
+        case .rightMouseUp:
+            print("Правый клик - показ меню")
+            showRightClickMenu()
+
+        default:
+            break
         }
     }
 
@@ -296,15 +299,14 @@ class StatusBarController {
     }
 
 
-    @objc private func rightClickAction(_ sender: NSClickGestureRecognizer) {
-        print("Правый клик - показ меню")
+    private func showRightClickMenu() {
         // Создаём меню для правого клика
         let menu = createRightClickMenu()
 
         // Показываем меню в позиции статус айтема
-        let event = NSApp.currentEvent
-        let point = statusItem.button?.convert(event?.locationInWindow ?? .zero, from: nil) ?? .zero
-        menu.popUp(positioning: nil, at: point, in: statusItem.button)
+        statusItem.menu = menu
+        statusItem.button?.performClick(nil)
+        statusItem.menu = nil // Убираем меню после показа
     }
 
     @objc private func showSettingsAction() {
