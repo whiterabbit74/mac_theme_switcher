@@ -1,134 +1,149 @@
 # ThemeSwitcher 🌙☀️
 
-Нативное macOS приложение на Swift для переключения системной темы (светлая/тёмная) при клике по иконке в меню баре.
+Native macOS menu bar application for instant theme switching between light and dark modes.
 
-## Сборка и запуск без Xcode
+![macOS](https://img.shields.io/badge/macOS-12.0+-blue)
+![Swift](https://img.shields.io/badge/Swift-5.9+-orange)
+![License](https://img.shields.io/badge/License-MIT-green)
 
-### Требования
-- macOS 12.0 или новее
-- Swift 5.9 или новее
-- Xcode Command Line Tools (опционально, если установлен Xcode)
+## ✨ Features
 
-### Установка и запуск
+- **Left Click**: Instantly toggle between light/dark theme
+- **Right Click**: Access settings menu and options
+- **Auto-Updates**: Icon automatically reflects current system theme
+- **Permissions**: Smart AppleScript permission handling
+- **Error Handling**: User-friendly error messages and guidance
+- **Memory Safe**: Proper cleanup and resource management
 
-1. **Клонируйте или скачайте проект**
+## 🚀 Quick Start
 
-2. **Перейдите в папку проекта:**
+### Installation
+
+1. **Download latest release** from [GitHub Releases](https://github.com/whiterabbit74/mac_theme_switcher/releases)
+2. **Extract** the downloaded archive
+3. **Run** the application:
    ```bash
-   cd /Users/q/Work/gpt5/mac_changetheme
+   ./ThemeSwitcher
    ```
 
-3. **Соберите приложение:**
-   ```bash
-   make build
-   ```
-   или
-   ```bash
-   swift build --configuration release
-   ```
-
-4. **Запустите приложение:**
-   ```bash
-   make run
-   ```
-   или
-   ```bash
-   ./.build/release/ThemeSwitcher
-   ```
-
-### Доступные команды
+### Building from Source
 
 ```bash
-make build        # Собрать приложение
-make run          # Собрать и запустить
-make run-debug    # Запустить в режиме разработки
-make test         # Запустить тесты
-make clean        # Очистить сборку
-make permissions  # Сбросить права AppleScript
-make install      # Полная установка
-make help         # Показать справку
-```
+# Clone the repository
+git clone https://github.com/whiterabbit74/mac_theme_switcher.git
+cd mac_theme_switcher
 
-## Как использовать
-
-1. После запуска приложение появится в меню баре (рядом с часами)
-2. Иконка покажет текущую тему:
-   - ☀️ - светлая тема
-   - 🌙 - тёмная тема
-3. Используйте разные клики для разных действий:
-   - **Левый клик** - открывает основное меню:
-     - **Переключить тему** - переключает между светлой и тёмной темой
-     - **Текущая тема** - показывает активную тему (🌙 Тёмная / ☀️ Светлая)
-     - **Выход** - закрывает приложение (или Cmd+Q)
-   - **Правый клик** - открывает контекстное меню:
-     - **🎨 Быстрое переключение** - моментально переключает тему
-     - **Текущая тема** - показывает активную тему
-
-## Разрешения
-
-При первом запуске macOS запросит разрешение на использование AppleScript для изменения системных настроек. Разрешите доступ для корректной работы приложения.
-
-### Настройка прав
-
-Если у вас возникли проблемы с доступом:
-
-1. **Автоматическая настройка:**
-   ```bash
-   ./setup_permissions.sh
-   ```
-
-2. **Ручная настройка:**
-   ```bash
-   make permissions
-   ```
-
-3. **Через Системные настройки:**
-   - Перейдите в Системные настройки → Безопасность → Конфиденциальность → Автоматизация
-   - Найдите ThemeSwitcher и разрешите доступ к "System Events"
-
-После настройки прав перезапустите приложение:
-```bash
+# Build and run
 make run
 ```
 
-## Структура проекта
+## 📋 Requirements
+
+- macOS 12.0 or later
+- Swift 5.9+ (for building from source)
+- Xcode Command Line Tools
+
+## 🔧 Available Commands
+
+```bash
+make build        # Build the application
+make run          # Build and run
+make run-debug    # Run in development mode
+make test         # Run tests
+make clean        # Clean build artifacts
+make permissions  # Reset AppleScript permissions
+make install      # Full installation
+make help         # Show help
+```
+
+## 🎯 How to Use
+
+1. **Launch** the application - icon appears in menu bar
+2. **Left click** the icon to instantly toggle theme
+3. **Right click** for settings menu:
+   - Current theme display
+   - Manual theme toggle
+   - Settings window
+   - About information
+   - Quit option
+
+## 🔐 Permissions
+
+On first run, macOS will request AppleScript permissions. The app will guide you through:
+
+1. **Automatic prompt** - Grant access when requested
+2. **Manual setup** - If needed, go to:
+   - System Preferences → Security & Privacy → Privacy → Automation
+   - Enable access to "System Events" for ThemeSwitcher
+
+### Permission Scripts
+
+```bash
+# Reset permissions (if having issues)
+./scripts/fix_permissions.sh
+
+# Setup permissions
+./scripts/setup_permissions.sh
+```
+
+## 🏗️ Architecture
+
+- **Swift Package Manager** - Modern Swift project structure
+- **AppKit** - Native macOS UI components
+- **AppleScript** - System theme switching via System Events
+- **NSStatusBar** - Menu bar integration
+- **DistributedNotificationCenter** - System theme change detection
+
+## 📁 Project Structure
 
 ```
-mac_changetheme/
-├── Package.swift              # Конфигурация Swift Package Manager
-├── Sources/
-│   └── ThemeSwitcher/
-│       └── main.swift        # Основной код приложения
-├── Tests/
-│   └── ThemeSwitcherTests/
-│       └── ThemeSwitcherTests.swift  # Тесты
-├── Makefile                  # Команды для сборки
-└── README.md                 # Документация
+mac_theme_switcher/
+├── Sources/ThemeSwitcher/     # Main application code
+│   └── main.swift            # Complete application implementation
+├── Tests/ThemeSwitcherTests/  # Unit tests
+├── scripts/                  # Utility scripts
+│   ├── fix_permissions.sh    # Permission troubleshooting
+│   └── setup_permissions.sh  # Permission setup
+├── Package.swift             # Swift Package Manager config
+├── Makefile                  # Build commands
+├── CLAUDE.md                 # Development guidance
+└── README.md                 # This file
 ```
 
-## Технические детали
+## 🐛 Troubleshooting
 
-- **API**: Использует `System Events` через AppleScript для переключения темы
-- **UI**: Menu bar приложение без окна
-- **Иконки**: Динамически генерируемые векторные иконки
-- **Платформа**: Native macOS (оптимизировано для M1/M-серии)
+### App doesn't start
+- Check macOS version (requires 12.0+)
+- Verify Swift installation: `swift --version`
+- Grant permissions when prompted
 
-## Устранение проблем
+### Theme doesn't switch
+- Check AppleScript permissions in System Preferences
+- Run `make permissions` to reset permissions
+- Restart the application
 
-### Приложение не запускается
-1. Убедитесь что у вас macOS 12.0+
-2. Проверьте что Swift установлен: `swift --version`
-3. Дайте разрешения на AppleScript при запросе системы
+### Icon doesn't appear
+- Check menu bar isn't hidden
+- Restart the application
+- Check system resources
 
-### Иконка не меняется
-1. Перезапустите приложение
-2. Проверьте системные разрешения
-3. Попробуйте `make permissions`
+## 📄 License
 
-### Тема не переключается
-1. Убедитесь что у вас есть права на изменение системных настроек
-2. В Системных настройках → Безопасность → Конфиденциальность → Автоматизация разрешите доступ к "System Events"
+MIT License - see [LICENSE](LICENSE) file for details.
 
-## Лицензия
+## 🤝 Contributing
 
-MIT License
+1. Fork the repository
+2. Create your feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
+
+## 📞 Support
+
+- **Issues**: [GitHub Issues](https://github.com/whiterabbit74/mac_theme_switcher/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/whiterabbit74/mac_theme_switcher/discussions)
+
+---
+
+**🎉 Made with ❤️ for macOS users who love instant theme switching!**
