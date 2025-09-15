@@ -7,33 +7,84 @@ class ThemeManager {
 
     private init() {}
 
+    // MARK: - Permission Checking
+    private func checkAppleScriptPermission() -> Bool {
+        let script = "tell application \"System Events\" to get dark mode of appearance preferences"
+        let appleScript = NSAppleScript(source: script)
+        var error: NSDictionary?
+
+        let result = appleScript?.executeAndReturnError(&error)
+        return error == nil && result != nil
+    }
+
+    private func requestAppleScriptPermission() {
+        let alert = NSAlert()
+        alert.messageText = "Нужны разрешения"
+        alert.informativeText = "ThemeSwitcher требует доступ к System Events для переключения темы.\n\nПерейдите в:\nСистемные настройки → Безопасность → Конфиденциальность → Автоматизация\n\nИ разрешите доступ к \"System Events\""
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Понятно")
+        alert.addButton(withTitle: "Открыть настройки")
+
+        let response = alert.runModal()
+        if response == .alertSecondButtonReturn {
+            // Открываем настройки безопасности
+            let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")!
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     func getCurrentTheme() -> String {
         // Используем NSAppearance для определения текущей темы
         if let appearance = NSApp?.effectiveAppearance {
             return appearance.name == .darkAqua ? "dark" : "light"
         }
 
-        // Fallback для тестового окружения или когда NSApp недоступен
-        if #available(macOS 10.14, *) {
-            return NSAppearance.currentDrawing().name == .darkAqua ? "dark" : "light"
+        // Fallback через AppleScript
+        let script = "tell application \"System Events\" to get dark mode of appearance preferences"
+        if let appleScript = NSAppleScript(source: script) {
+            var error: NSDictionary?
+            let result = appleScript.executeAndReturnError(&error)
+            if error == nil {
+                return result.booleanValue ? "dark" : "light"
+            }
         }
 
         return "light" // fallback по умолчанию
     }
 
-    func toggleTheme() {
-        let script = "tell application \"System Events\" to tell appearance preferences to set dark mode to not dark mode"
-        var error: NSDictionary?
-
-        if let appleScript = NSAppleScript(source: script) {
-            appleScript.executeAndReturnError(&error)
-            if error != nil {
-                print("Error toggling theme: \(error!)")
-            } else {
-                print("Theme toggled successfully")
+    func toggleTheme(completion: @escaping (Bool, String?) -> Void) {
+        // Проверяем разрешения сначала
+        if !checkAppleScriptPermission() {
+            DispatchQueue.main.async {
+                self.requestAppleScriptPermission()
+                completion(false, "Отсутствуют разрешения AppleScript")
             }
-        } else {
-            print("Failed to create AppleScript")
+            return
+        }
+
+        // Выполняем переключение в фоновом потоке
+        DispatchQueue.global(qos: .userInitiated).async {
+            let script = "tell application \"System Events\" to tell appearance preferences to set dark mode to not dark mode"
+            var error: NSDictionary?
+
+            if let appleScript = NSAppleScript(source: script) {
+                appleScript.executeAndReturnError(&error)
+
+                DispatchQueue.main.async {
+                    if let error = error {
+                        let errorMessage = error["NSAppleScriptErrorMessage"] as? String ?? "Неизвестная ошибка"
+                        print("Error toggling theme: \(errorMessage)")
+                        completion(false, errorMessage)
+                    } else {
+                        print("Theme toggled successfully")
+                        completion(true, nil)
+                    }
+                }
+            } else {
+                DispatchQueue.main.async {
+                    completion(false, "Не удалось создать AppleScript")
+                }
+            }
         }
     }
 
@@ -54,16 +105,16 @@ class ThemeManager {
 
         if theme == "dark" {
             // Луна для тёмной темы
-            NSColor.white.set()
+            NSColor.controlAccentColor.set()
             let moonPath = NSBezierPath()
             moonPath.appendArc(withCenter: NSPoint(x: 9, y: 9), radius: 7, startAngle: -90, endAngle: 270)
             moonPath.appendArc(withCenter: NSPoint(x: 12, y: 6), radius: 4, startAngle: 90, endAngle: 270, clockwise: true)
             moonPath.fill()
         } else {
             // Солнце для светлой темы
-            NSColor.yellow.set()
+            NSColor.controlAccentColor.set()
             let sunPath = NSBezierPath()
-            sunPath.appendArc(withCenter: NSPoint(x: 9, y: 9), radius: 6, startAngle: 0, endAngle: 360)
+            sunPath.appendArc(withCenter: NSPoint(x: 9, y: 9), radius: 5, startAngle: 0, endAngle: 360)
 
             // Лучи солнца
             for i in 0..<8 {
@@ -87,7 +138,7 @@ class ThemeManager {
         }
 
         image.unlockFocus()
-        image.isTemplate = false
+        image.isTemplate = true // Делаем шаблонной для правильного отображения в menu bar
         return image
     }
 }
@@ -137,6 +188,7 @@ class SettingsWindowController: NSWindowController {
         themeLabel.font = NSFont.systemFont(ofSize: 14)
         themeLabel.alignment = .center
         themeLabel.frame = NSRect(x: 20, y: 130, width: 360, height: 25)
+        themeLabel.tag = 100 // Для поиска при обновлении
         contentView.addSubview(themeLabel)
 
         // Кнопка переключения темы
@@ -159,25 +211,32 @@ class SettingsWindowController: NSWindowController {
     }
 
     @objc private func toggleThemeFromSettings() {
-        ThemeManager.shared.toggleTheme()
-        // Обновляем отображение темы в окне настроек
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            self.updateThemeDisplay()
+        ThemeManager.shared.toggleTheme { [weak self] success, error in
+            if success {
+                self?.updateThemeDisplay()
+            } else if let error = error {
+                self?.showError(error)
+            }
         }
     }
 
     private func updateThemeDisplay() {
         guard let contentView = window?.contentView else { return }
 
-        // Находим label с текущей темой и обновляем его
-        for subview in contentView.subviews {
-            if let label = subview as? NSTextField,
-               label.stringValue.contains("Текущая тема:") {
-                let currentTheme = ThemeManager.shared.getCurrentTheme()
-                label.stringValue = "Текущая тема: \(currentTheme == "dark" ? "🌙 Тёмная" : "☀️ Светлая")"
-                break
-            }
+        // Находим label с текущей темой по tag
+        if let label = contentView.viewWithTag(100) as? NSTextField {
+            let currentTheme = ThemeManager.shared.getCurrentTheme()
+            label.stringValue = "Текущая тема: \(currentTheme == "dark" ? "🌙 Тёмная" : "☀️ Светлая")"
         }
+    }
+
+    private func showError(_ message: String) {
+        let alert = NSAlert()
+        alert.messageText = "Ошибка переключения темы"
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 }
 
@@ -186,17 +245,24 @@ class StatusBarController {
     private var statusItem: NSStatusItem!
     private let themeManager = ThemeManager.shared
     private var settingsWindowController: SettingsWindowController?
+    private var themeObserver: NSObjectProtocol?
 
     init() {
         setupStatusBar()
+    }
+
+    deinit {
+        // Proper cleanup
+        if let observer = themeObserver {
+            DistributedNotificationCenter.default().removeObserver(observer)
+        }
     }
 
     private func setupStatusBar() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         if let button = statusItem.button {
-            button.image = themeManager.createIcon(for: themeManager.getCurrentTheme())
-            button.image?.size = NSSize(width: 18, height: 18)
+            updateIcon()
             button.action = #selector(statusBarButtonClicked(_:))
             button.target = self
             button.toolTip = "ThemeSwitcher - Левый клик: переключить тему, Правый клик: настройки"
@@ -205,15 +271,15 @@ class StatusBarController {
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
 
-        // Наблюдатель за изменением темы
-        DistributedNotificationCenter.default().addObserver(
-            self,
-            selector: #selector(themeChanged),
-            name: Notification.Name("AppleInterfaceThemeChangedNotification"),
-            object: nil
-        )
+        // Наблюдатель за изменением темы с proper cleanup
+        themeObserver = DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("AppleInterfaceThemeChangedNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.themeChanged()
+        }
 
-        updateIcon()
         print("ThemeSwitcher запущен! Иконка в меню баре.")
     }
 
@@ -264,30 +330,52 @@ class StatusBarController {
         switch event.type {
         case .leftMouseUp:
             print("Левый клик - переключение темы")
-            themeManager.toggleTheme()
-            // Обновляем иконку после переключения
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                self.updateIcon()
-            }
+            handleLeftClick()
 
         case .rightMouseUp:
             print("Правый клик - показ меню")
-            showRightClickMenu()
+            handleRightClick()
 
         default:
             break
         }
     }
 
-    @objc private func toggleThemeAction() {
-        themeManager.toggleTheme()
-        // Обновляем иконку после переключения темы
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            self.updateIcon()
+    private func handleLeftClick() {
+        // Показываем индикатор загрузки
+        if let button = statusItem.button {
+            button.isEnabled = false
+        }
+
+        themeManager.toggleTheme { [weak self] success, error in
+            // Восстанавливаем кнопку
+            if let button = self?.statusItem.button {
+                button.isEnabled = true
+            }
+
+            if success {
+                // Обновляем иконку только после успешного переключения
+                self?.updateIcon()
+            } else if let error = error {
+                self?.showError("Ошибка переключения темы", error)
+            }
         }
     }
 
+    private func handleRightClick() {
+        let menu = createRightClickMenu()
+        // Используем современный способ показа меню
+        statusItem.menu = menu
+        statusItem.button?.performClick(nil)
+        statusItem.menu = nil
+    }
+
+    @objc private func toggleThemeAction() {
+        handleLeftClick() // Используем ту же логику
+    }
+
     @objc private func themeChanged() {
+        // Обновляем иконку при системном изменении темы
         updateIcon()
     }
 
@@ -296,17 +384,6 @@ class StatusBarController {
         if let button = statusItem.button {
             button.image = themeManager.createIcon(for: currentTheme)
         }
-    }
-
-
-    private func showRightClickMenu() {
-        // Создаём меню для правого клика
-        let menu = createRightClickMenu()
-
-        // Показываем меню в позиции статус айтема
-        statusItem.menu = menu
-        statusItem.button?.performClick(nil)
-        statusItem.menu = nil // Убираем меню после показа
     }
 
     @objc private func showSettingsAction() {
@@ -323,6 +400,15 @@ class StatusBarController {
         alert.messageText = "ThemeSwitcher"
         alert.informativeText = "Простое приложение для переключения темы macOS\n\nВерсия: 1.0\n\nЛевый клик - переключение темы\nПравый клик - меню настроек"
         alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
+    private func showError(_ title: String, _ message: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = .warning
         alert.addButton(withTitle: "OK")
         alert.runModal()
     }
